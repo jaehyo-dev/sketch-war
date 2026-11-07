@@ -9,6 +9,7 @@ var kind := ""
 var cost := 0
 var cd_ratio := 0.0      # 0 = 사용 가능, 1 = 방금 사용(오버레이가 가득)
 var time := 0.0
+var level := 1           # 아이콘 그림 레벨
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(120, 120)
@@ -28,7 +29,7 @@ func _draw() -> void:
 	draw_colored_polygon(PackedVector2Array([Vector2(146, 150 - fold), Vector2(150 - fold, 146), Vector2(150 - fold, 150 - fold)]), Color("e6d57f"))
 	draw_texture_rect(DoodleArt.rect_outline(Vector2i(150, 150)), Rect2(0, 0, 150, 150), false)
 	# 아이콘: 유닛 낙서 한 장(떨림 프레임 그대로 8fps)
-	var frames := DoodleArt.frames(kind)
+	var frames := DoodleArt.frames(kind, level)
 	draw_texture_rect(frames[DoodleArt.frame_at(time)], Rect2(15, 4, 120, 120), false)
 	# 비용
 	var font := get_theme_default_font()

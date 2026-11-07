@@ -17,7 +17,7 @@ const UNITS := {
 	"horned": {"hp": 260, "atk": 14, "range": 44.0, "speed": 35.0, "cooldown": 1.5},
 }
 
-var units: Array = []                       # 각 유닛: {id, kind, team, x, hp, cd}
+var units: Array = []                       # 각 유닛: {id, kind, team, x, hp, cd, state, t, hurt_t}
 var card_cd := {}                           # 종류 → 카드 남은 대기 시간(초)
 var _next_id := 0
 var base_hp: Array = [BASE_HP, BASE_HP]     # 인덱스 = 팀
@@ -28,7 +28,8 @@ func spawn(team: int, kind := "stickman") -> void:
 	if winner != -1 or not UNITS.has(kind):
 		return
 	var x := 0.0 if team == 0 else FIELD_LEN
-	units.append({"id": _next_id, "kind": kind, "team": team, "x": x, "hp": UNITS[kind].hp, "cd": 0.0})
+	units.append({"id": _next_id, "kind": kind, "team": team, "x": x, "hp": UNITS[kind].hp, "cd": 0.0,
+		"state": "walk", "t": 0.0, "hurt_t": 0.0})
 	_next_id += 1
 
 # 플레이어 카드로 소환: 카드 대기 중이면 false
@@ -61,6 +62,12 @@ func _find_target(u: Dictionary):
 			best_dist = dist
 	return best
 
+# 공격은 3단계: 준비(windup) → 타격 순간에 데미지 → 마무리(strike) → 걷기.
+# cooldown은 준비 시작부터 센다(한 번 공격 주기 전체). 데미지는 여기서만 준다. 화면은 state를 자세로 바꿔 그리기만 한다.
+const WINDUP := 0.25     # 준비 시간(초)
+const STRIKE := 0.2      # 타격 자세 유지 시간(초)
+const HURT := 0.15       # 맞은 자세 유지 시간(초)
+
 func tick(dt: float) -> void:
 	if winner != -1:
 		return
@@ -71,19 +78,36 @@ func tick(dt: float) -> void:
 			continue
 		var st: Dictionary = UNITS[u.kind]
 		u.cd = maxf(0.0, u.cd - dt)
-		var target = _find_target(u)
+		u.hurt_t = maxf(0.0, u.hurt_t - dt)
 		var enemy_team := 1 - int(u.team)
 		var enemy_base_x := FIELD_LEN if u.team == 0 else 0.0
-		var in_base_range: bool = absf(enemy_base_x - u.x) <= st.range
-		if target != null or in_base_range:
-			if u.cd <= 0.0:
-				u.cd = st.cooldown
-				if target != null:
-					target.hp -= st.atk
+		match u.state:
+			"windup":
+				u.t -= dt
+				if u.t <= 0.0:
+					# 타격 순간: 지금 사거리 안에 있는 대상에게만 데미지(준비 중 대상이 죽었으면 헛스윙)
+					var tg = _find_target(u)
+					if tg != null:
+						tg.hp -= st.atk
+						tg.hurt_t = HURT
+					elif absf(enemy_base_x - u.x) <= st.range:
+						base_hp[enemy_team] -= st.atk
+					u.state = "strike"
+					u.t = STRIKE
+			"strike":
+				u.t -= dt
+				if u.t <= 0.0:
+					u.state = "walk"
+			_:
+				var target = _find_target(u)
+				var in_base_range: bool = absf(enemy_base_x - u.x) <= st.range
+				if target != null or in_base_range:
+					if u.cd <= 0.0:
+						u.cd = st.cooldown
+						u.state = "windup"
+						u.t = WINDUP
 				else:
-					base_hp[enemy_team] -= st.atk
-		else:
-			u.x += dir_of(u.team) * st.speed * dt
+					u.x += dir_of(u.team) * st.speed * dt
 	units = units.filter(func(o): return o.hp > 0)
 	if base_hp[1] <= 0:
 		winner = 0

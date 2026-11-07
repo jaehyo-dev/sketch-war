@@ -25,17 +25,8 @@ static func V(x: float, y: float) -> Vector2: return Vector2(x, y)
 # 종류별 도형 데이터. 얼굴은 점 눈 + 선 입(무표정).
 static func shapes(kind: String) -> Array:
 	match kind:
-		"stickman":  # 삐죽 머리, 나뭇가지 든 막대인간
-			return [
-				C(V(80, 50), 14),
-				L(V(72, 38), V(67, 23)), L(V(80, 36), V(81, 19)), L(V(88, 38), V(95, 24)), L(V(67, 45), V(55, 37)),
-				D(V(84, 49)), D(V(93, 49)), L(V(84, 57), V(93, 57)),
-				L(V(80, 64), V(80, 102)),
-				L(V(80, 74), V(62, 90)), L(V(80, 74), V(104, 84)),
-				L(V(104, 84), V(121, 48)), L(V(114, 63), V(126, 60)),
-				L(V(80, 102), V(67, 148)), L(V(80, 102), V(95, 148)),
-				H([V(80, 64), V(88, 70), V(88, 100), V(80, 102)]),
-			]
+		"stickman":
+			return posed_shapes("stickman", "walk_a")
 		"eraser":  # 네모 몸통 + 표정 + 다리
 			return [
 				Z([V(48, 52), V(112, 50), V(113, 114), V(49, 116)]),
@@ -96,15 +87,104 @@ static func shapes(kind: String) -> Array:
 	return []
 
 # 굽기: 종류+레벨의 떨림 변형 FRAMES장을 만들어 캐시(로드 때 한 번). 매 프레임 재계산하지 않는다.
-static func frames(kind: String, level := 1) -> Array:
-	var key := "%s:%d" % [kind, level]
+static func frames(kind: String, level := 1, pose := "walk_a") -> Array:
+	if not has_rig(kind):
+		pose = "walk_a"   # 관절 데이터가 없는 유닛은 자세 하나뿐
+	var key := "%s:%d:%s" % [kind, level, pose]
 	if _cache.has(key):
 		return _cache[key]
 	var style := Doodle.enemy_style() if kind in ENEMY_KINDS else Doodle.style_for_level(level)
 	var out := []
 	for f in FRAMES:
-		out.append(Doodle.to_texture(Doodle.bake(shapes(kind), SIZE, hash(kind), style, f)))
+		out.append(Doodle.to_texture(Doodle.bake(posed_shapes(kind, pose, level), SIZE, hash(kind), style, f)))
 	_cache[key] = out
+	return out
+
+# --- 관절 + 자세 ---
+# RIG: joints(기본 관절 좌표), follow(앞 관절을 따라 같이 움직이는 관절), parts(관절을 이어 그리는 도형), poses(바뀌는 관절만 덮어씀).
+# 자세마다 발은 땅(y=148)에, 몸 중심은 x≈80 근처에 둬서 자세를 바꿔도 몸이 튀지 않게 한다.
+# parts의 lv = 이 레벨부터 보이는 부분(10/20/30렙 변화용, 지금은 안 씀). seed는 자세와 무관(hash(kind))이라 자세가 바뀌어도 떨림 모양이 이어진다.
+const POSE_NAMES := ["walk_a", "walk_b", "windup", "strike", "hurt"]
+static var _rigs := {}
+
+static func has_rig(kind: String) -> bool:
+	return kind == "stickman"
+
+static func rig(kind: String) -> Dictionary:
+	if _rigs.has(kind):
+		return _rigs[kind]
+	var r := {}
+	if kind == "stickman":
+		r = {
+			"joints": {
+				"head": V(80, 50), "neck": V(80, 64), "hip": V(80, 102), "hand_b": V(62, 90), "hand_f": V(104, 84),
+				"stick_tip": V(121, 48), "foot_l": V(67, 148), "foot_r": V(95, 148),
+				"h1a": V(72, 38), "h1b": V(67, 23), "h2a": V(80, 36), "h2b": V(81, 19), "h3a": V(88, 38), "h3b": V(95, 24),
+				"h4a": V(67, 45), "h4b": V(55, 37), "eye1": V(84, 49), "eye2": V(93, 49), "mouth_a": V(84, 57), "mouth_b": V(93, 57),
+				"sh": V(80, 74), "sh_r": V(88, 70), "hip_r": V(88, 100),
+			},
+			"follow": {
+				"h1a": "head", "h1b": "head", "h2a": "head", "h2b": "head", "h3a": "head", "h3b": "head", "h4a": "head", "h4b": "head",
+				"eye1": "head", "eye2": "head", "mouth_a": "head", "mouth_b": "head",
+				"sh": "neck", "sh_r": "neck", "hip_r": "hip", "stick_tip": "hand_f",
+			},
+			"stick": ["hand_f", "stick_tip"],   # 나뭇가지: 중간에서 잔가지가 뻗음(자동 계산)
+			"parts": [
+				{"k": "circle", "j": ["head"], "r": 14},
+				{"k": "line", "j": ["h1a", "h1b"]}, {"k": "line", "j": ["h2a", "h2b"]}, {"k": "line", "j": ["h3a", "h3b"]}, {"k": "line", "j": ["h4a", "h4b"]},
+				{"k": "dot", "j": ["eye1"]}, {"k": "dot", "j": ["eye2"]}, {"k": "line", "j": ["mouth_a", "mouth_b"]},
+				{"k": "line", "j": ["neck", "hip"]},
+				{"k": "line", "j": ["sh", "hand_b"]}, {"k": "line", "j": ["sh", "hand_f"]},
+				{"k": "line", "j": ["hand_f", "stick_tip"]}, {"k": "line", "j": ["stick_mid", "twig_b"]},
+				{"k": "line", "j": ["hip", "foot_l"]}, {"k": "line", "j": ["hip", "foot_r"]},
+				{"k": "shade", "j": ["neck", "sh_r", "hip_r", "hip"]},
+			],
+			"poses": {
+				"walk_a": {"foot_l": V(62, 148), "foot_r": V(98, 148), "hip": V(80, 103), "hand_b": V(70, 94), "hand_f": V(106, 82)},
+				"walk_b": {"foot_l": V(76, 148), "foot_r": V(86, 148), "hip": V(80, 99), "neck": V(80, 61), "head": V(80, 47), "hand_b": V(60, 84), "hand_f": V(102, 88)},
+				"windup": {"head": V(76, 50), "neck": V(78, 64), "hip": V(80, 102), "hand_f": V(56, 62), "stick_tip": V(38, 32), "hand_b": V(92, 86), "foot_l": V(60, 148), "foot_r": V(100, 148)},
+				"strike": {"head": V(98, 56), "neck": V(90, 68), "hip": V(78, 102), "hand_f": V(120, 84), "stick_tip": V(142, 100), "hand_b": V(72, 92), "foot_l": V(58, 148), "foot_r": V(106, 148)},
+				"hurt": {"head": V(68, 54), "neck": V(74, 66), "hip": V(80, 102), "hand_f": V(92, 70), "stick_tip": V(104, 40), "hand_b": V(56, 76), "foot_l": V(68, 148), "foot_r": V(98, 148)},
+			},
+		}
+	_rigs[kind] = r
+	return r
+
+# 관절 + 자세 + 레벨 → 도형 dict 배열(Doodle.bake가 그대로 먹는 형식)
+static func posed_shapes(kind: String, pose: String, level := 1) -> Array:
+	if not has_rig(kind):
+		return shapes(kind)
+	var rg := rig(kind)
+	var ov: Dictionary = rg.poses.get(pose, {})
+	var j := {}
+	for n in rg.joints:
+		j[n] = ov.get(n, rg.joints[n])
+	for n in rg.follow:           # 덮어쓰지 않은 따라가는 관절은 기준 관절이 움직인 만큼 같이 이동
+		if not ov.has(n):
+			var a: String = rg.follow[n]
+			j[n] = rg.joints[n] + (j[a] - rg.joints[a])
+	if rg.has("stick"):
+		j["stick_mid"] = j[rg.stick[0]].lerp(j[rg.stick[1]], 0.58)
+		j["twig_b"] = j.stick_mid + V(12, -3)
+	var out := []
+	for p in rg.parts:
+		if p.get("lv", 1) > level:
+			continue
+		var pts := []
+		for n in p.j:
+			pts.append(j[n])
+		match p.k:
+			"line": out.append({"k": "line", "p": pts})
+			"circle": out.append({"k": "circle", "c": pts[0], "r": p.r})
+			"dot": out.append({"k": "dot", "c": pts[0], "r": p.get("r", 1.8)})
+			"shade": out.append({"k": "shade", "p": pts})
+	# 효과 낙서: 타격 땐 가지 끝의 속도선, 피격 땐 머리 주변의 충격선
+	if pose == "strike":
+		var t: Vector2 = j.stick_tip
+		out += [L(t + V(-2, -16), t + V(12, -26)), L(t + V(6, -2), t + V(20, -4)), L(t + V(-2, 14), t + V(10, 22))]
+	elif pose == "hurt":
+		var h: Vector2 = j.head
+		out += [L(h + V(-18, -18), h + V(-28, -26)), L(h + V(-22, 0), h + V(-34, -2)), L(h + V(-18, 16), h + V(-28, 24))]
 	return out
 
 # 8fps로 도는 프레임 번호(phase로 유닛마다 어긋나게)

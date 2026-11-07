@@ -41,7 +41,9 @@ jobs:
       - name: 테스트 (실패하면 여기서 중단)
         run: |
           godot --headless --import || true
-          godot --headless -s tests/run_tests.gd
+          # 스크립트 파싱 오류는 종료 코드가 0이라서, 마지막 줄 "실패 0건"도 함께 확인
+          godot --headless -s tests/run_tests.gd | tee test.out
+          grep -q "실패 0건" test.out
 
       - name: 현재 버전을 사이트 루트에 빌드
         run: |

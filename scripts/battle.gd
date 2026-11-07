@@ -11,6 +11,7 @@ var logic := BattleLogic.new()
 var time := 0.0
 var cards: Array = []
 var enemy_test_idx := 0
+var art_level := 1        # 아군 그림 레벨(시험용 조작, 1~9). 레벨업 시스템은 v0.5.0
 var tower_tex := load("res://assets/art/base_tower.png") as Texture2D
 var castle_tex := load("res://assets/art/base_castle.png") as Texture2D
 
@@ -28,6 +29,7 @@ func _ready() -> void:
 	# 로드 때 모든 유닛 프레임을 미리 굽는다(이후 재계산 없음)
 	for k in DoodleArt.ALLY_KINDS + DoodleArt.ENEMY_KINDS:
 		DoodleArt.frames(k)
+	_bake_level(art_level)
 	# 하단 카드 4장
 	for i in DoodleArt.ALLY_KINDS.size():
 		var k: String = DoodleArt.ALLY_KINDS[i]
@@ -38,6 +40,7 @@ func _ready() -> void:
 		c.tapped.connect(func(kind): logic.summon_card(kind))
 		add_child(c)
 		cards.append(c)
+	_add_link("그림 레벨 1", Vector2(40, 620), _next_level)
 	_add_link("처음으로", Vector2(560, 24), func(): get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	_add_link("시험용 적 소환", Vector2(1010, 620), _spawn_test_enemy)
 
@@ -52,6 +55,20 @@ func _add_link(text: String, pos: Vector2, cb: Callable) -> void:
 	b.position = pos
 	b.pressed.connect(cb)
 	add_child(b)
+
+# 시험용: 아군 그림 레벨을 1→9로 올리며 돌아감. 바뀐 레벨의 자세를 미리 굽는다.
+func _next_level() -> void:
+	art_level = art_level % 9 + 1
+	_bake_level(art_level)
+	for c in cards:
+		c.level = art_level
+	for ch in get_children():
+		if ch is Button and ch.text.begins_with("그림 레벨"):
+			ch.text = "그림 레벨 %d" % art_level
+
+func _bake_level(lv: int) -> void:
+	for pose in DoodleArt.POSE_NAMES:
+		DoodleArt.frames("stickman", lv, pose)
 
 # 적 시스템은 v0.3.0 — 지금은 종류를 돌려가며 시험 소환
 func _spawn_test_enemy() -> void:
@@ -87,8 +104,18 @@ func _draw_base(tex: Texture2D, cx: float, s: float) -> void:
 	var sz := tex.get_size() * s
 	draw_texture_rect(tex, Rect2(cx - sz.x / 2.0, GROUND_Y + 2.0 - sz.y, sz.x, sz.y), false)
 
+# 로직 상태 → 자세. 타격·준비가 우선, 그다음 피격, 아니면 걸음(걸음 폭마다 A/B 교대 → 발이 미끄러지지 않음)
+func _pose_of(u: Dictionary) -> String:
+	if u.state == "strike":
+		return "strike"
+	if u.state == "windup":
+		return "windup"
+	if u.hurt_t > 0.0:
+		return "hurt"
+	return "walk_a" if int(u.x / 24.0) % 2 == 0 else "walk_b"
+
 func _draw_unit(u: Dictionary) -> void:
-	var fr: Array = DoodleArt.frames(u.kind)
+	var fr: Array = DoodleArt.frames(u.kind, art_level if u.team == 0 else 1, _pose_of(u))
 	var tex: Texture2D = fr[DoodleArt.frame_at(time, u.id)]
 	var px: float = LEFT_X + u.x * SCALE
 	var rect := Rect2(px - 80.0, GROUND_Y - 150.0, 160, 160)

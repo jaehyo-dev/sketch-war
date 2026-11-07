@@ -51,7 +51,8 @@ func _init() -> void:
 	var e := BattleLogic.new()
 	e.spawn(0)
 	e.units[0].x = BattleLogic.FIELD_LEN - 30.0
-	e.tick(0.1)
+	for i in 5:
+		e.tick(0.1)   # 준비 0.25초 뒤에 타격
 	check(e.base_hp[1] == BattleLogic.BASE_HP - BattleLogic.UNITS.stickman.atk, "기지 공격")
 	check(e.units[0].x == BattleLogic.FIELD_LEN - 30.0, "기지 앞에서 정지")
 
@@ -60,7 +61,8 @@ func _init() -> void:
 	f.base_hp[1] = BattleLogic.UNITS.stickman.atk
 	f.spawn(0)
 	f.units[0].x = BattleLogic.FIELD_LEN
-	f.tick(0.1)
+	for i in 5:
+		f.tick(0.1)
 	check(f.winner == 0 and f.base_hp[1] <= 0, "플레이어 승리")
 	f.spawn(0)
 	check(f.units.size() == 1, "종료 후 소환 불가")
@@ -69,6 +71,36 @@ func _init() -> void:
 	var r1 := _simulate()
 	var r2 := _simulate()
 	check(r1 == r2 and r1 != "", "시뮬레이션 재현성: " + r1)
+
+	# 공격 타이밍: 준비 중에는 데미지 없음 → 준비가 끝나는 틱에 데미지 → 타격 자세 → 걷기로 복귀
+	var w := BattleLogic.new()
+	w.spawn(0)
+	w.spawn(1, "inkblot")
+	w.units[0].x = 500.0
+	w.units[1].x = 520.0
+	var hp0: int = w.units[1].hp
+	w.tick(0.1)
+	check(w.units[0].state == "windup" and w.units[1].hp == hp0, "준비 시작: 아직 데미지 없음")
+	w.tick(0.1)
+	w.tick(0.1)
+	check(w.units[1].hp == hp0, "준비 중 데미지 없음")
+	w.tick(0.1)
+	check(w.units[1].hp == hp0 - BattleLogic.UNITS.stickman.atk and w.units[1].hurt_t > 0.0, "준비 끝나는 틱에 타격·피격 표시")
+	check(w.units[0].state == "strike", "타격 자세")
+	w.tick(BattleLogic.STRIKE + 0.01)
+	check(w.units[0].state == "walk", "타격 후 복귀")
+
+	# 준비 중 대상이 사라지면 헛스윙(데미지 없음, 기지에도 안 들어감)
+	var ms := BattleLogic.new()
+	ms.spawn(0)
+	ms.spawn(1)
+	ms.units[0].x = 500.0
+	ms.units[1].x = 520.0
+	ms.tick(0.1)
+	ms.units[1].hp = 0
+	ms.tick(0.2)
+	ms.tick(0.2)
+	check(ms.units[0].state == "strike" and ms.base_hp[1] == BattleLogic.BASE_HP, "대상 사라지면 헛스윙")
 
 	# 유닛 종류별 능력치: 소환한 종류의 체력이 들어감, 모르는 종류는 무시
 	var g := BattleLogic.new()
@@ -100,6 +132,12 @@ func _init() -> void:
 	# 7렙부터 음영 빗금이 생겨 잉크가 늘어남
 	var hi := Doodle.bake(shp, DoodleArt.SIZE, 7, Doodle.style_for_level(9), 0)
 	check(_ink(hi) > _ink(f0), "고레벨 음영 빗금 추가")
+	# 스틱맨 자세 5종: 모두 그려지고, 서로 다르며, 발은 땅(y≈148) 근처에 있음
+	var poses := {}
+	for pn in DoodleArt.POSE_NAMES:
+		poses[pn] = Doodle.bake(DoodleArt.posed_shapes("stickman", pn, 1), DoodleArt.SIZE, hash("stickman"), st, 0)
+		check(_ink(poses[pn]) > 400 and _lowest(poses[pn]) >= 144 and _lowest(poses[pn]) <= 152, "자세 %s: 그려짐, 발이 땅에 (최저 y %d)" % [pn, _lowest(poses[pn])])
+	check(_diff(poses.walk_a, poses.strike) > 250 and _diff(poses.walk_a, poses.windup) > 250 and _diff(poses.walk_a, poses.walk_b) > 150, "자세끼리 눈에 띄게 다름")
 	for k in DoodleArt.ALLY_KINDS + DoodleArt.ENEMY_KINDS:
 		check(not DoodleArt.shapes(k).is_empty() and BattleLogic.UNITS.has(k), "도형·능력치 정의: " + k)
 
@@ -114,6 +152,14 @@ func _ink(img: Image) -> int:
 			if img.get_pixel(x, y).a > 0.4:
 				n += 1
 	return n
+
+# 잉크가 있는 가장 아래 행
+func _lowest(img: Image) -> int:
+	for y in range(img.get_height() - 1, -1, -1):
+		for x in img.get_width():
+			if img.get_pixel(x, y).a > 0.4:
+				return y
+	return -1
 
 # 잉크 여부가 서로 다른 픽셀 수
 func _diff(a: Image, b: Image) -> int:
