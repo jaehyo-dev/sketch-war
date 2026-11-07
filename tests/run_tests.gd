@@ -25,8 +25,8 @@ func _init() -> void:
 
 	# 전진: 1초에 speed만큼, 상대는 반대 방향
 	b.tick(1.0)
-	check(is_equal_approx(b.units[0].x, BattleLogic.CAT.speed), "플레이어 고양이 전진")
-	check(is_equal_approx(b.units[1].x, BattleLogic.FIELD_LEN - BattleLogic.CAT.speed), "상대 고양이 반대 방향 전진")
+	check(is_equal_approx(b.units[0].x, BattleLogic.UNITS.stickman.speed), "플레이어 고양이 전진")
+	check(is_equal_approx(b.units[1].x, BattleLogic.FIELD_LEN - BattleLogic.UNITS.stickman.speed), "상대 고양이 반대 방향 전진")
 
 	# 적 고양이끼리 만나면 싸우고, 먼저 죽는 쪽이 사라짐
 	var c := BattleLogic.new()
@@ -45,19 +45,19 @@ func _init() -> void:
 	d.units[0].x = 100.0
 	d.units[1].x = 900.0
 	d.tick(0.1)
-	check(d.units[0].hp == BattleLogic.CAT.hp and d.units[1].hp == BattleLogic.CAT.hp, "사거리 밖 무피해")
+	check(d.units[0].hp == BattleLogic.UNITS.stickman.hp and d.units[1].hp == BattleLogic.UNITS.stickman.hp, "사거리 밖 무피해")
 
 	# 기지 공격: 상대 기지 앞에서 멈추고 기지 체력이 깎임
 	var e := BattleLogic.new()
 	e.spawn(0)
 	e.units[0].x = BattleLogic.FIELD_LEN - 30.0
 	e.tick(0.1)
-	check(e.base_hp[1] == BattleLogic.BASE_HP - BattleLogic.CAT.atk, "기지 공격")
+	check(e.base_hp[1] == BattleLogic.BASE_HP - BattleLogic.UNITS.stickman.atk, "기지 공격")
 	check(e.units[0].x == BattleLogic.FIELD_LEN - 30.0, "기지 앞에서 정지")
 
 	# 승리 판정: 기지가 0이 되면 winner 확정, 이후 소환 불가
 	var f := BattleLogic.new()
-	f.base_hp[1] = BattleLogic.CAT.atk
+	f.base_hp[1] = BattleLogic.UNITS.stickman.atk
 	f.spawn(0)
 	f.units[0].x = BattleLogic.FIELD_LEN
 	f.tick(0.1)
@@ -70,8 +70,59 @@ func _init() -> void:
 	var r2 := _simulate()
 	check(r1 == r2 and r1 != "", "시뮬레이션 재현성: " + r1)
 
+	# 유닛 종류별 능력치: 소환한 종류의 체력이 들어감, 모르는 종류는 무시
+	var g := BattleLogic.new()
+	g.spawn(0, "eraser")
+	g.spawn(1, "horned")
+	g.spawn(1, "없는종류")
+	check(g.units.size() == 2 and g.units[0].hp == 220 and g.units[1].hp == 260, "종류별 체력, 잘못된 종류 무시")
+
+	# 카드 쿨타임: 쓰면 대기, 시간이 지나면 다시 사용 가능
+	var h := BattleLogic.new()
+	check(h.summon_card("rabbit") and not h.summon_card("rabbit"), "카드 대기 중 재소환 불가")
+	check(h.card_ratio("rabbit") == 1.0, "카드 대기 비율 1.0")
+	h.tick(1.5)
+	check(is_equal_approx(h.card_ratio("rabbit"), 0.5), "카드 대기 비율 감소")
+	h.tick(1.5)
+	check(h.card_ratio("rabbit") == 0.0 and h.summon_card("rabbit"), "대기 끝나면 재소환")
+
+	# 낙서 렌더러: 같은 시드 = 같은 그림, 프레임마다 서로 눈에 띄게 다름
+	var st := Doodle.style_for_level(1)
+	var shp := DoodleArt.shapes("stickman")
+	var f0 := Doodle.bake(shp, DoodleArt.SIZE, 7, st, 0)
+	check(f0.get_data() == Doodle.bake(shp, DoodleArt.SIZE, 7, st, 0).get_data(), "낙서 굽기 재현성(같은 시드)")
+	var f1 := Doodle.bake(shp, DoodleArt.SIZE, 7, st, 1)
+	check(_diff(f0, f1) > 150, "떨림 프레임이 서로 다름 (차이 %d픽셀)" % _diff(f0, f1))
+	check(_ink(f0) > 400 and _ink(f0) < 3000, "스틱맨 선 굵기 적당 (잉크 %d픽셀)" % _ink(f0))
+	# 적은 아군보다 훨씬 어둡고 촘촘
+	var en := Doodle.bake(DoodleArt.shapes("inkblot"), DoodleArt.SIZE, 7, Doodle.enemy_style(), 0)
+	check(_ink(en) > _ink(f0) * 4, "적 스크리블이 아군보다 4배 이상 촘촘 (적 %d)" % _ink(en))
+	# 7렙부터 음영 빗금이 생겨 잉크가 늘어남
+	var hi := Doodle.bake(shp, DoodleArt.SIZE, 7, Doodle.style_for_level(9), 0)
+	check(_ink(hi) > _ink(f0), "고레벨 음영 빗금 추가")
+	for k in DoodleArt.ALLY_KINDS + DoodleArt.ENEMY_KINDS:
+		check(not DoodleArt.shapes(k).is_empty() and BattleLogic.UNITS.has(k), "도형·능력치 정의: " + k)
+
 	print("실패 ", fails, "건")
 	quit(1 if fails > 0 else 0)
+
+# 알파가 일정 이상인 픽셀 수
+func _ink(img: Image) -> int:
+	var n := 0
+	for y in img.get_height():
+		for x in img.get_width():
+			if img.get_pixel(x, y).a > 0.4:
+				n += 1
+	return n
+
+# 잉크 여부가 서로 다른 픽셀 수
+func _diff(a: Image, b: Image) -> int:
+	var n := 0
+	for y in a.get_height():
+		for x in a.get_width():
+			if (a.get_pixel(x, y).a > 0.4) != (b.get_pixel(x, y).a > 0.4):
+				n += 1
+	return n
 
 func _simulate() -> String:
 	var s := BattleLogic.new()

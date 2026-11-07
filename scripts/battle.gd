@@ -1,61 +1,125 @@
 extends Control
-# 전투 화면: BattleLogic을 돌리고 그리기만 한다. 그림은 임시 도형.
+# 전투 화면: BattleLogic을 돌리고 그리기만 한다. 유닛은 미리 구운 낙서 프레임(DoodleArt)을 돌려 쓴다.
 
 const LEFT_X := 160.0     # 전장 x=0이 화면 어디인지
 const RIGHT_X := 1120.0
 const GROUND_Y := 470.0
 const SCALE := (RIGHT_X - LEFT_X) / BattleLogic.FIELD_LEN
+const INK := Color("3a3a3e")
 
 var logic := BattleLogic.new()
-var result_label: Label
+var time := 0.0
+var cards: Array = []
+var enemy_test_idx := 0
+var tower_tex := load("res://assets/art/base_tower.png") as Texture2D
+var castle_tex := load("res://assets/art/base_castle.png") as Texture2D
 
 func _ready() -> void:
-	_add_button("고양이 소환", Vector2(60, 580), func(): logic.spawn(0))
-	_add_button("시험용 적 소환", Vector2(380, 580), func(): logic.spawn(1))
-	_add_button("처음으로", Vector2(1020, 40), func(): get_tree().change_scene_to_file("res://scenes/main.tscn"), 36)
-	result_label = Label.new()
-	result_label.add_theme_font_size_override("font_size", 110)
-	result_label.add_theme_color_override("font_color", Color("b03030"))
-	result_label.position = Vector2(440, 180)
-	add_child(result_label)
+	# 배경: 종이 질감 셰이더(방안지). 부모(_draw)보다 뒤에 그린다.
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.show_behind_parent = true
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/paper.gdshader")
+	mat.set_shader_parameter("pattern", 1)
+	bg.material = mat
+	add_child(bg)
+	# 로드 때 모든 유닛 프레임을 미리 굽는다(이후 재계산 없음)
+	for k in DoodleArt.ALLY_KINDS + DoodleArt.ENEMY_KINDS:
+		DoodleArt.frames(k)
+	# 하단 카드 4장
+	for i in DoodleArt.ALLY_KINDS.size():
+		var k: String = DoodleArt.ALLY_KINDS[i]
+		var c := UnitCard.new()
+		c.kind = k
+		c.cost = BattleLogic.UNITS[k].cost
+		c.position = Vector2(320 + i * 170, 548)
+		c.tapped.connect(func(kind): logic.summon_card(kind))
+		add_child(c)
+		cards.append(c)
+	_add_link("처음으로", Vector2(560, 24), func(): get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	_add_link("시험용 적 소환", Vector2(1010, 600), _spawn_test_enemy)
 
-func _add_button(text: String, pos: Vector2, cb: Callable, size := 48) -> void:
+# 글씨만 있는 링크 버튼(버튼 모양 없음)
+func _add_link(text: String, pos: Vector2, cb: Callable) -> void:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", size)
+	b.flat = true
+	b.add_theme_font_size_override("font_size", 38)
+	b.add_theme_color_override("font_color", INK)
+	b.add_theme_color_override("font_hover_color", Color("b03030"))
 	b.position = pos
 	b.pressed.connect(cb)
 	add_child(b)
 
+# 적 시스템은 v0.3.0 — 지금은 종류를 돌려가며 시험 소환
+func _spawn_test_enemy() -> void:
+	logic.spawn(1, DoodleArt.ENEMY_KINDS[enemy_test_idx % DoodleArt.ENEMY_KINDS.size()])
+	enemy_test_idx += 1
+
 func _process(delta: float) -> void:
+	time += delta
 	logic.tick(delta)
-	if logic.winner != -1:
-		result_label.text = "승리!" if logic.winner == 0 else "패배..."
+	for c in cards:
+		c.cd_ratio = logic.card_ratio(c.kind)
+		c.time = time
+		c.queue_redraw()
 	queue_redraw()
 
 func _draw() -> void:
-	draw_rect(Rect2(0, 0, 1280, 720), Color("f4ecd8"))
-	draw_line(Vector2(0, GROUND_Y), Vector2(1280, GROUND_Y), Color("4a4036"), 4)
-	_draw_base(LEFT_X, 0, Color("6a8fc0"))
-	_draw_base(RIGHT_X, 1, Color("c06a6a"))
+	var font := get_theme_default_font()
+	# 스프링 제본(왼쪽 가장자리)과 땅 선(흔들리는 한 줄)
+	draw_texture(DoodleArt.spring(720), Vector2(-14, 0))
+	draw_texture(DoodleArt.wavy_line(1180, 2.6, 3.0), Vector2(80, GROUND_Y - 5))
+	# 기지(AI 이미지, 안 움직임)
+	_draw_base(tower_tex, LEFT_X - 40.0, 0.8)
+	_draw_base(castle_tex, RIGHT_X + 40.0, 0.65)
+	# 유닛: 아래쪽에 있는 것부터가 아니라 소환 순서대로, 떨림 프레임을 8fps로
 	for u in logic.units:
-		_draw_cat(u)
+		_draw_unit(u)
+	_draw_hud(font)
+	if logic.winner != -1:
+		var msg := "승리!" if logic.winner == 0 else "패배..."
+		draw_string(font, Vector2(0, 280), msg, HORIZONTAL_ALIGNMENT_CENTER, 1280, 130, Color("b03030"))
 
-# 기지(네모) + 체력 막대
-func _draw_base(x: float, team: int, col: Color) -> void:
-	draw_rect(Rect2(x - 40, GROUND_Y - 150, 80, 150), col)
-	draw_rect(Rect2(x - 60, GROUND_Y - 190, 120, 14), Color("999999"))
-	var ratio := clampf(float(logic.base_hp[team]) / BattleLogic.BASE_HP, 0.0, 1.0)
-	draw_rect(Rect2(x - 60, GROUND_Y - 190, 120 * ratio, 14), Color("4caf50"))
+func _draw_base(tex: Texture2D, cx: float, s: float) -> void:
+	var sz := tex.get_size() * s
+	draw_texture_rect(tex, Rect2(cx - sz.x / 2.0, GROUND_Y + 2.0 - sz.y, sz.x, sz.y), false)
 
-# 고양이: 동그란 몸 + 삼각 귀 + 체력 막대 (팀 색으로 구분)
-func _draw_cat(u: Dictionary) -> void:
-	var p := Vector2(LEFT_X + u.x * SCALE, GROUND_Y - 22)
-	var col := Color("8a8a8a") if u.team == 0 else Color("c08a4a")
-	draw_circle(p, 22, col)
-	draw_colored_polygon(PackedVector2Array([p + Vector2(-20, -10), p + Vector2(-8, -34), p + Vector2(-2, -16)]), col)
-	draw_colored_polygon(PackedVector2Array([p + Vector2(20, -10), p + Vector2(8, -34), p + Vector2(2, -16)]), col)
-	draw_circle(p + Vector2(-8, -4), 3, Color.BLACK)
-	draw_circle(p + Vector2(8, -4), 3, Color.BLACK)
-	var ratio := clampf(float(u.hp) / BattleLogic.CAT.hp, 0.0, 1.0)
-	draw_rect(Rect2(p.x - 20, p.y - 46, 40 * ratio, 5), Color("4caf50"))
+func _draw_unit(u: Dictionary) -> void:
+	var fr: Array = DoodleArt.frames(u.kind)
+	var tex: Texture2D = fr[DoodleArt.frame_at(time, u.id)]
+	var px: float = LEFT_X + u.x * SCALE
+	var rect := Rect2(px - 80.0, GROUND_Y - 150.0, 160, 160)
+	if u.team == 1:   # 적은 왼쪽을 보도록 뒤집기
+		rect = Rect2(px + 80.0, rect.position.y, -160, 160)
+	draw_texture_rect(tex, rect, false)
+	# 체력: 머리 위 가는 선 한 줄(비율만큼 굵은 선)
+	var ratio := clampf(float(u.hp) / BattleLogic.UNITS[u.kind].hp, 0.0, 1.0)
+	if ratio < 1.0:
+		draw_line(Vector2(px - 24, GROUND_Y - 158), Vector2(px + 24, GROUND_Y - 158), Color(0.2, 0.2, 0.2, 0.25), 3)
+		draw_line(Vector2(px - 24, GROUND_Y - 158), Vector2(px - 24 + 48 * ratio, GROUND_Y - 158), INK, 3)
+
+# 테이프 붙은 종이 조각 HUD: 내 기지(왼쪽 위), 적 기지(오른쪽 위)
+func _draw_hud(font: Font) -> void:
+	_hud_piece(font, Vector2(100, 22), -0.02, "우리 기지", 0, INK)
+	_hud_piece(font, Vector2(880, 22), 0.02, "적 기지", 1, Color("0e0e16"))
+
+func _hud_piece(font: Font, pos: Vector2, rot: float, label: String, team: int, bar_col: Color) -> void:
+	draw_set_transform(pos, rot)
+	draw_rect(Rect2(0, 0, 300, 84), Color("fbf6e6"))
+	draw_texture_rect(DoodleArt.rect_outline(Vector2i(300, 84)), Rect2(0, 0, 300, 84), false)
+	# 테이프(반투명 노란 조각, 양 위 모서리)
+	draw_set_transform(pos + Vector2(-8, -2), rot - 0.5)
+	draw_rect(Rect2(0, 0, 50, 18), Color(0.95, 0.88, 0.5, 0.6))
+	draw_set_transform(pos + Vector2(262, 0), rot + 0.5)
+	draw_rect(Rect2(0, 0, 50, 18), Color(0.95, 0.88, 0.5, 0.6))
+	draw_set_transform(pos, rot)
+	var hp: int = maxi(0, logic.base_hp[team])
+	draw_string(font, Vector2(18, 44), "%s %d" % [label, hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 38, INK)
+	# 체력 막대: 손으로 그린 틀 + 채움
+	var ratio := clampf(float(hp) / BattleLogic.BASE_HP, 0.0, 1.0)
+	draw_rect(Rect2(18, 57, 264 * ratio, 12), Color(bar_col, 0.72))
+	draw_texture_rect(DoodleArt.rect_outline(Vector2i(268, 22)), Rect2(16, 52, 268, 22), false)
+	draw_set_transform(Vector2.ZERO, 0.0)
