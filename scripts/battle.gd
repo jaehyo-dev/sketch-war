@@ -22,7 +22,7 @@ func _ready() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/paper.gdshader")
-	mat.set_shader_parameter("pattern", 1)
+	mat.set_shader_parameter("blemish", false)   # 큰 도화지: 줄·얼룩 없음
 	bg.material = mat
 	add_child(bg)
 	# 로드 때 모든 유닛 프레임을 미리 굽는다(이후 재계산 없음)
@@ -34,12 +34,12 @@ func _ready() -> void:
 		var c := UnitCard.new()
 		c.kind = k
 		c.cost = BattleLogic.UNITS[k].cost
-		c.position = Vector2(320 + i * 170, 548)
+		c.position = Vector2(370 + i * 140, 584)
 		c.tapped.connect(func(kind): logic.summon_card(kind))
 		add_child(c)
 		cards.append(c)
 	_add_link("처음으로", Vector2(560, 24), func(): get_tree().change_scene_to_file("res://scenes/main.tscn"))
-	_add_link("시험용 적 소환", Vector2(1010, 600), _spawn_test_enemy)
+	_add_link("시험용 적 소환", Vector2(1010, 620), _spawn_test_enemy)
 
 # 글씨만 있는 링크 버튼(버튼 모양 없음)
 func _add_link(text: String, pos: Vector2, cb: Callable) -> void:
@@ -69,8 +69,8 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font := get_theme_default_font()
-	# 스프링 제본(왼쪽 가장자리)과 땅 선(흔들리는 한 줄)
-	draw_texture(DoodleArt.spring(720), Vector2(-14, 0))
+	# 배경 낙서(해·구름·언덕·나무·풀·땅 음영): 한 번 구운 그림. 땅 선은 흔들리는 한 줄
+	draw_texture(DoodleArt.backdrop(GROUND_Y), Vector2.ZERO)
 	draw_texture(DoodleArt.wavy_line(1180, 2.6, 3.0), Vector2(80, GROUND_Y - 5))
 	# 기지(AI 이미지, 안 움직임)
 	_draw_base(tower_tex, LEFT_X - 40.0, 0.8)

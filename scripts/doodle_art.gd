@@ -152,3 +152,41 @@ static func mini(kind: String) -> ImageTexture:
 		"bolt":
 			shp = [P([V(36, 4), V(18, 30), V(32, 30), V(22, 56), V(46, 24), V(32, 24), V(40, 4)])]
 	return _deco("mini" + kind, shp, Vector2i(60, 60), _pencil(1.4, 2.6))
+
+# 전투 배경: 큰 도화지 위 연필 풍경(해, 구름, 먼 언덕, 나무, 풀, 땅 음영). 레벨과 무관한 기본 품질.
+# 연하게 그려 유닛이 앞에 도드라지게 한다. 풀 위치는 시드 고정.
+static func backdrop(ground_y: float) -> ImageTexture:
+	var key := "backdrop%d" % int(ground_y)
+	if _cache.has(key):
+		return _cache[key]
+	var g := ground_y
+	var shp := []
+	# 해(짧은 햇살)와 구름 둘
+	var sun := V(1100, 195)
+	shp.append(C(sun, 40))
+	for i in 10:
+		var a := TAU * i / 10.0
+		shp.append(L(sun + Vector2(cos(a), sin(a)) * 56.0, sun + Vector2(cos(a), sin(a)) * (72.0 + (i % 2) * 8.0)))
+	for c in [V(330, 200), V(620, 250), V(850, 180)]:
+		shp.append(E(c, 62, 20)); shp.append(E(c + V(-30, -14), 28, 18)); shp.append(E(c + V(20, -20), 34, 22))
+	# 먼 언덕 두 겹
+	shp.append(P([V(0, g - 70), V(140, g - 118), V(300, g - 80), V(470, g - 130), V(640, g - 84), V(820, g - 120), V(1000, g - 78), V(1160, g - 112), V(1280, g - 76)]))
+	shp.append(P([V(0, g - 30), V(220, g - 52), V(420, g - 28), V(700, g - 56), V(960, g - 30), V(1280, g - 50)]))
+	# 먼 나무 셋
+	for x in [250.0, 560.0, 930.0]:
+		var b := g - 52.0
+		shp.append(L(V(x, b), V(x, b - 34))); shp.append(C(V(x, b - 52), 20))
+	# 땅 선 위 풀 뭉치(위치 고정)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1234
+	var x := 40.0
+	while x < 1250.0:
+		var h := rng.randf_range(10.0, 20.0)
+		shp.append(L(V(x, g), V(x - 5, g - h))); shp.append(L(V(x + 3, g), V(x + 3, g - h - 5))); shp.append(L(V(x + 6, g), V(x + 11, g - h + 2)))
+		x += rng.randf_range(50.0, 110.0)
+	# 땅 선(흔들리는 한 줄)과 그 아래 음영 빗금(카드 위에서 끝남)
+	shp.append(L(V(40, g), V(1250, g)))
+	shp.append(H([V(0, g + 8), V(1280, g + 8), V(1280, g + 62), V(0, g + 62)]))
+	var st := {"wobble": 2.2, "passes": 2, "width": 2.4, "hatch": 15.0, "color": Color(0.23, 0.23, 0.25, 0.55)}
+	_cache[key] = Doodle.to_texture(Doodle.bake(shp, Vector2i(1280, 720), 99, st, 0))
+	return _cache[key]

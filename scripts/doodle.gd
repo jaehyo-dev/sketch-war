@@ -1,5 +1,9 @@
 class_name Doodle
 extends RefCounted
+
+# 알파 버퍼 상자: Dictionary에 PackedArray를 직접 넣으면 쓸 때마다 통째로 복사되므로 객체 안에서 제자리 수정한다.
+class Buf:
+	var a := PackedFloat32Array()
 # 낙서 렌더러: "도형 데이터"를 받아 선을 노이즈로 흔들어 Image로 굽는다(화면·렌더러 없이도 동작 → 테스트 가능).
 # 도형(Dictionary) 종류:
 #   line {p:[a,b]}            선        poly {p:[...]}         열린 폴리라인
@@ -31,8 +35,8 @@ static func enemy_style() -> Dictionary:
 static func bake(shapes: Array, size: Vector2i, seed: int, style: Dictionary, frame := 0) -> Image:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([seed, frame])
-	var buf := PackedFloat32Array()
-	buf.resize(size.x * size.y)
+	var buf := Buf.new()
+	buf.a.resize(size.x * size.y)
 	var ctx := {"buf": buf, "w": size.x, "h": size.y, "rng": rng, "st": style}
 	for s in shapes:
 		_draw_shape(ctx, s)
@@ -42,11 +46,11 @@ static func bake(shapes: Array, size: Vector2i, seed: int, style: Dictionary, fr
 	var r := int(col.r * 255.0)
 	var g := int(col.g * 255.0)
 	var b := int(col.b * 255.0)
-	for i in buf.size():
+	for i in buf.a.size():
 		data[i * 4] = r
 		data[i * 4 + 1] = g
 		data[i * 4 + 2] = b
-		data[i * 4 + 3] = int(clampf(buf[i], 0.0, 1.0) * col.a * 255.0)
+		data[i * 4 + 3] = int(clampf(buf.a[i], 0.0, 1.0) * col.a * 255.0)
 	return Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, data)
 
 static func _draw_shape(ctx: Dictionary, s: Dictionary) -> void:
@@ -141,7 +145,7 @@ static func _stroke(ctx: Dictionary, pts: Array, wscale: float, clip := []) -> v
 static func _stamp_disc(ctx: Dictionary, c: Vector2, r: float, strength: float, clip: Array) -> void:
 	if not clip.is_empty() and not Geometry2D.is_point_in_polygon(c, PackedVector2Array(clip)):
 		return
-	var buf: PackedFloat32Array = ctx.buf
+	var buf: Buf = ctx.buf
 	var w: int = ctx.w
 	var h: int = ctx.h
 	var x0 := maxi(0, int(floorf(c.x - r - 1.0)))
@@ -152,18 +156,16 @@ static func _stamp_disc(ctx: Dictionary, c: Vector2, r: float, strength: float, 
 		for x in range(x0, x1 + 1):
 			var cov := clampf(r + 0.5 - Vector2(x + 0.5, y + 0.5).distance_to(c), 0.0, 1.0) * strength
 			var idx := y * w + x
-			if cov > buf[idx]:
-				buf[idx] = cov
-	ctx.buf = buf
+			if cov > buf.a[idx]:
+				buf.a[idx] = cov
 
 static func _clear_disc(ctx: Dictionary, c: Vector2, r: float) -> void:
-	var buf: PackedFloat32Array = ctx.buf
+	var buf: Buf = ctx.buf
 	var w: int = ctx.w
 	for y in range(maxi(0, int(c.y - r - 1)), mini(ctx.h, int(c.y + r + 2))):
 		for x in range(maxi(0, int(c.x - r - 1)), mini(w, int(c.x + r + 2))):
 			var cov := clampf(r + 0.5 - Vector2(x + 0.5, y + 0.5).distance_to(c), 0.0, 1.0)
-			buf[y * w + x] *= 1.0 - cov
-	ctx.buf = buf
+			buf.a[y * w + x] *= 1.0 - cov
 
 # 적 몸통: 외곽을 거칠게 두 번 긋고, 안쪽을 무작위 방향의 가는 선으로 빽빽이 채운다.
 static func _scribble(ctx: Dictionary, s: Dictionary) -> void:

@@ -11,8 +11,8 @@ var cd_ratio := 0.0      # 0 = 사용 가능, 1 = 방금 사용(오버레이가 
 var time := 0.0
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(150, 150)
-	size = Vector2(150, 150)
+	custom_minimum_size = Vector2(120, 120)
+	size = Vector2(120, 120)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 func _gui_input(e: InputEvent) -> void:
@@ -20,6 +20,7 @@ func _gui_input(e: InputEvent) -> void:
 		tapped.emit(kind)
 
 func _draw() -> void:
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(0.8, 0.8))   # 150칸 기준으로 그리고 0.8배로 줄임
 	var fold := 28.0
 	# 메모지 몸통(오른쪽 아래 모서리를 접어 자름)
 	var body := PackedVector2Array([Vector2(4, 4), Vector2(146, 4), Vector2(146, 150 - fold), Vector2(150 - fold, 146), Vector2(4, 146)])
