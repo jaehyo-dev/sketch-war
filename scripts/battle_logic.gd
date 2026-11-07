@@ -18,6 +18,7 @@ const UNITS := {
 }
 
 var units: Array = []                       # 각 유닛: {id, kind, team, x, hp, cd, state, t, hurt_t}
+var events: Array = []                      # 이번 틱에 일어난 타격 {x, team(맞은 쪽), dmg, base}. 화면이 읽고 비운다
 var card_cd := {}                           # 종류 → 카드 남은 대기 시간(초)
 var _next_id := 0
 var base_hp: Array = [BASE_HP, BASE_HP]     # 인덱스 = 팀
@@ -90,8 +91,10 @@ func tick(dt: float) -> void:
 					if tg != null:
 						tg.hp -= st.atk
 						tg.hurt_t = HURT
+						events.append({"x": tg.x, "team": enemy_team, "dmg": st.atk, "base": false, "id": tg.id})
 					elif absf(enemy_base_x - u.x) <= st.range:
 						base_hp[enemy_team] -= st.atk
+						events.append({"x": enemy_base_x, "team": enemy_team, "dmg": st.atk, "base": true, "id": -1})
 					u.state = "strike"
 					u.t = STRIKE
 			"strike":

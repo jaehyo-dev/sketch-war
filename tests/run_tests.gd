@@ -87,6 +87,10 @@ func _init() -> void:
 	w.tick(0.1)
 	check(w.units[1].hp == hp0 - BattleLogic.UNITS.stickman.atk and w.units[1].hurt_t > 0.0, "준비 끝나는 틱에 타격·피격 표시")
 	check(w.units[0].state == "strike", "타격 자세")
+	# 양쪽이 동시에 때리므로 이벤트 2건: 적이 맞은 것(팀 1)은 x=520, 스틱맨 데미지
+	var hit = w.events.filter(func(ev): return ev.team == 1)
+	check(w.events.size() == 2 and hit.size() == 1 and hit[0].x == 520.0 and hit[0].dmg == BattleLogic.UNITS.stickman.atk and not hit[0].base, "타격 이벤트(맞은 위치·데미지)")
+	check(e.events.size() == 1 and e.events[0].base and e.events[0].team == 1, "기지 타격 이벤트")
 	w.tick(BattleLogic.STRIKE + 0.01)
 	check(w.units[0].state == "walk", "타격 후 복귀")
 
@@ -132,6 +136,9 @@ func _init() -> void:
 	# 7렙부터 음영 빗금이 생겨 잉크가 늘어남
 	var hi := Doodle.bake(shp, DoodleArt.SIZE, 7, Doodle.style_for_level(9), 0)
 	check(_ink(hi) > _ink(f0), "고레벨 음영 빗금 추가")
+	# 타격 이펙트 폭발 낙서 3종이 그려지고 서로 다름
+	var b0 := DoodleArt.burst(0).get_image()
+	check(_ink(b0) > 800 and _diff(b0, DoodleArt.burst(1).get_image()) > 300, "타격 폭발 낙서 (잉크 %d)" % _ink(b0))
 	# 스틱맨 자세 5종: 모두 그려지고, 서로 다르며, 발은 땅(y≈148) 근처에 있음
 	var poses := {}
 	for pn in DoodleArt.POSE_NAMES:
