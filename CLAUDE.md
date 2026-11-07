@@ -6,8 +6,9 @@
 ## 기본 정보
 - 엔진: Godot 4 (GDScript), 1280x720 가로
 - 저장소: https://github.com/jaehyo-dev/sketch-war (공개, 기본 브랜치 main)
-- 배포 주소: (미정 — GitHub Pages 설정 시 기록)
-- 테스트 명령: (미정 — v0.1.0에서 정함. 예정: `godot --headless -s tests/run_tests.gd`, 종료 코드 0이어야 통과)
+- 배포 주소: https://jaehyo-dev.github.io/sketch-war/ (이전 버전: /versions/v0.1.0/ 형식)
+- 테스트 명령: `godot --headless -s tests/run_tests.gd` (종료 코드 0이어야 통과)
+- 웹 빌드: `godot --headless --export-release Web build/index.html` (Godot 4.7.2, 싱글스레드)
 
 ## 진행 방식 (전역 규칙 핵심)
 - 큰 작업은 단계로 나누고 한 번에 한 단계만. 끝나면 멈추고 보고. 다음 단계 기능을 미리 만들지 마.
@@ -39,7 +40,7 @@
 | 버전 | 내용 | 상태 |
 |---|---|---|
 | v0.0 | 준비(CLAUDE.md, 에이전트, PROGRESS) | 완료 |
-| v0.1.0 | 프로젝트 세팅 + 스케치북 메인 + 전장 1줄 + 고양이 소환·전진·전투 + 기지 체력 | 대기 |
+| v0.1.0 | 프로젝트 세팅 + 스케치북 메인 + 전장 1줄 + 고양이 소환·전진·전투 + 기지 체력 | 검토 중 |
 | v0.2.0 | 그림 4단계 교체 실험(고양이, 낙서 셰이더) — 방향 확인 | 대기 |
 | v0.3.0 | 적 + 돈 자동 증가 + 비용·쿨타임 + 승패 | 대기 |
 | v0.4.0 | 유닛 여러 종 + 팀 편성 | 대기 |

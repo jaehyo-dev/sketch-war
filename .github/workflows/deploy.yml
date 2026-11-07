@@ -1,0 +1,83 @@
+# main 푸시 때: 테스트 → 웹 빌드(현재 + 모든 버전 태그) → 태그·릴리스 자동 생성 → Pages 배포
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Godot와 웹 내보내기 템플릿 설치
+        run: |
+          base=https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable
+          curl -sfL -o godot.zip $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          curl -sfL -o templates.tpz $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q godot.zip && sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q templates.tpz -d tpl && mv tpl/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: 테스트 (실패하면 여기서 중단)
+        run: |
+          godot --headless --import || true
+          godot --headless -s tests/run_tests.gd
+
+      - name: 현재 버전을 사이트 루트에 빌드
+        run: |
+          mkdir -p site
+          godot --headless --export-release Web "$PWD/site/index.html"
+
+      - name: 이전 버전 태그를 versions/ 에 다시 빌드
+        run: |
+          for tag in $(git tag -l 'v*'); do
+            git worktree add -f "../wt-$tag" "$tag"
+            if [ -f "../wt-$tag/export_presets.cfg" ]; then
+              mkdir -p "site/versions/$tag"
+              (cd "../wt-$tag" && godot --headless --import || true)
+              (cd "../wt-$tag" && godot --headless --export-release Web "$GITHUB_WORKSPACE/site/versions/$tag/index.html")
+            fi
+          done
+
+      - name: 태그·릴리스 자동 생성 (이미 있으면 건너뜀)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(grep -oP 'VERSION := "\K[^"]+' scripts/version.gd)
+          tag="v$ver"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "$tag 이미 있음"
+          else
+            # CHANGELOG에서 해당 버전 구간만 릴리스 설명으로 사용
+            awk -v v="$ver" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
+            # 새 태그도 versions/ 에 보관
+            mkdir -p "site/versions/$tag" && cp -r site/index.* "site/versions/$tag/" 
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
